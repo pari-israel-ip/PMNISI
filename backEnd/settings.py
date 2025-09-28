@@ -135,3 +135,6 @@ STATIC_URL = 'static/'
 
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
+# --- Configuración de Email (Modo Desarrollo) ---
+# Imprime los correos en la consola en lugar de enviarlos realmente.
+EMAIL_BACKEND = 'django.core.mail.backends.console.EmailBackend'
