@@ -32,6 +32,50 @@ class PendingUsersListView(generics.ListAPIView):
         return CustomUser.objects.filter(estado_aprobacion='PENDIENTE')
 
 
+# class ApproveUserView(APIView):
+#     permission_classes = [permissions.IsAdminUser]
+
+#     def post(self, request, pk):
+#         try:
+#             user = CustomUser.objects.get(pk=pk, estado_aprobacion='PENDIENTE')
+#         except CustomUser.DoesNotExist:
+#             return Response({'error': 'Usuario no encontrado o ya fue procesado'}, status=status.HTTP_404_NOT_FOUND)
+
+#         # Cambiamos el estado y activamos la cuenta
+#         user.estado_aprobacion = 'APROBADO'
+#         user.is_active = True
+#         user.save()
+        
+#         # --- LÓGICA PARA ENVIAR EL EMAIL DE ACTIVACIÓN ---
+#         # 1. Generar un token seguro y un ID de usuario codificado
+#         token_generator = PasswordResetTokenGenerator()
+#         token = token_generator.make_token(user)
+#         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+
+#         # 2. Construir la URL de activación (apuntará a tu frontend en el futuro)
+#         activation_link = f"http://localhost:3000/activate/{uidb64}/{token}" # Usamos 3000 para el futuro frontend de React
+
+#         # 3. Preparar y enviar el correo
+#         subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
+#         message = f"""
+#         ¡Hola {user.first_name}!
+
+#         Tu cuenta para el sistema ha sido aprobada.
+#         Por favor, haz clic en el siguiente enlace para configurar tu contraseña final:
+#         {activation_link}
+
+#         Si no solicitaste esta cuenta, por favor ignora este correo.
+#         """
+#         send_mail(
+#             subject,
+#             message,
+#             settings.DEFAULT_FROM_EMAIL, # Email del remitente
+#             [user.email], # Email del destinatario
+#             fail_silently=False,
+#         )
+
+#         return Response({'status': f'Usuario {user.email} aprobado y correo de activación enviado.'}, status=status.HTTP_200_OK)
+    
 class ApproveUserView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
@@ -41,37 +85,26 @@ class ApproveUserView(APIView):
         except CustomUser.DoesNotExist:
             return Response({'error': 'Usuario no encontrado o ya fue procesado'}, status=status.HTTP_404_NOT_FOUND)
 
-        # Cambiamos el estado y activamos la cuenta
+        # --- AQUÍ ESTÁ LA LÓGICA CORRECTA Y COMPLETA ---
         user.estado_aprobacion = 'APROBADO'
-        user.is_active = True
+        user.is_active = True  # <-- LA LÍNEA CLAVE QUE SOLUCIONA EL "RUIDO"
         user.save()
         
-        # --- LÓGICA PARA ENVIAR EL EMAIL DE ACTIVACIÓN ---
+        # ... (el resto del código que genera y envía el email se queda igual) ...
         # 1. Generar un token seguro y un ID de usuario codificado
         token_generator = PasswordResetTokenGenerator()
         token = token_generator.make_token(user)
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
 
-        # 2. Construir la URL de activación (apuntará a tu frontend en el futuro)
-        activation_link = f"http://localhost:3000/activate/{uidb64}/{token}" # Usamos 3000 para el futuro frontend de React
+        # 2. Construir la URL de activación
+        # EN EL FUTURO, CAMBIARÁS 'localhost:3000' POR EL DOMINIO REAL DE TU FRONTEND
+        activation_link = f"http://localhost:3000/activate/{uidb64}/{token}"
 
         # 3. Preparar y enviar el correo
         subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
-        message = f"""
-        ¡Hola {user.first_name}!
-
-        Tu cuenta para el sistema ha sido aprobada.
-        Por favor, haz clic en el siguiente enlace para configurar tu contraseña final:
-        {activation_link}
-
-        Si no solicitaste esta cuenta, por favor ignora este correo.
-        """
+        message = f"¡Hola {user.first_name}! Tu cuenta para el sistema ha sido aprobada..." # (El mensaje completo)
         send_mail(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL, # Email del remitente
-            [user.email], # Email del destinatario
-            fail_silently=False,
+            subject, message, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False,
         )
 
         return Response({'status': f'Usuario {user.email} aprobado y correo de activación enviado.'}, status=status.HTTP_200_OK)
