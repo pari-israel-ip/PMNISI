@@ -2,58 +2,60 @@
 
 from rest_framework import serializers
 from .models import CustomUser
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from django.utils.http import urlsafe_base64_decode
+from django.utils.text import slugify
+import random
+import string
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
-        # Campos que el usuario enviará al registrarse
-        fields = ['email', 'username', 'first_name', 'last_name', 'password']
-        # Aseguramos que la contraseña no sea legible en las respuestas de la API
-        extra_kwargs = {'password': {'write_only': True}}
+        # El aspirante solo da los datos que conoce: su nombre y su correo.
+        fields = ['email', 'first_name', 'last_name']
 
     def create(self, validated_data):
-        # Usamos el método create_user para hashear la contraseña correctamente
-        user = CustomUser.objects.create_user(
+        # --- LÓGICA FINAL Y PROFESIONAL PARA GENERAR USERNAME ---
+        # A partir del nombre y apellido, para que sea limpio.
+        
+        first_name = validated_data.get('first_name', '').split()[0]  # "Juan Carlos" -> "Juan"
+        last_name = validated_data.get('last_name', '').split()[0]    # "García López" -> "García"
+        base_username = f"{slugify(first_name[0])}{slugify(last_name)}"  # "Juan García" -> "jgarcia"
+
+        # Bucle para asegurar que el username sea 100% único
+        while True:
+            unique_id = ''.join(random.choices(string.digits, k=4))
+            username = f"{base_username}-{unique_id}"
+            if not CustomUser.objects.filter(username=username).exists():
+                break
+        
+        # Creamos el usuario con el username generado automáticamente.
+        # El aspirante NUNCA lo ve ni interactúa con él.
+        user = CustomUser.objects.create(
             email=validated_data['email'],
-            username=validated_data['username'],
             first_name=validated_data['first_name'],
             last_name=validated_data['last_name'],
-            password=validated_data['password'],
-            # Forzamos que el usuario se cree inactivo por defecto,
-            # aunque el modelo ya lo haría, esto es una doble seguridad.
-            is_active=False 
+            username=username, # Asignamos el username único y limpio
+            is_active=False
         )
         return user
-    # ... (la clase UserRegisterSerializer ya está aquí arriba) ...
-
+    
 class AdminUserListSerializer(serializers.ModelSerializer):
     class Meta:
         model = CustomUser
         # Campos que el admin verá en la lista de pendientes
         fields = ['id', 'email', 'username', 'first_name', 'last_name', 'estado_aprobacion', 'date_joined']
 
+class UserApprovalSerializer(serializers.Serializer):
+    rol_id = serializers.IntegerField()
+
 class SetNewPasswordSerializer(serializers.Serializer):
-    password = serializers.CharField(min_length=6, write_only=True)
+    password = serializers.CharField(min_length=8, write_only=True, required=True)
+    password2 = serializers.CharField(min_length=8, write_only=True, required=True, label="Confirm Password")
     token = serializers.CharField(write_only=True)
     uidb64 = serializers.CharField(write_only=True)
 
     def validate(self, attrs):
-        try:
-            password = attrs.get('password')
-            token = attrs.get('token')
-            uidb64 = attrs.get('uidb64')
+        # Su única misión es validar que las contraseñas coincidan
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError({"password": "Las contraseñas no coinciden."})
+        return attrs
 
-            user_id = urlsafe_base64_decode(uidb64).decode()
-            user = CustomUser.objects.get(id=user_id)
-
-            if not PasswordResetTokenGenerator().check_token(user, token):
-                raise serializers.ValidationError('El token de activación no es válido o ha expirado.', code='authorization')
-            
-            user.set_password(password)
-            user.save()
-
-            return user
-        except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist) as e:
-            raise serializers.ValidationError('El enlace de activación no es válido.', code='authorization')

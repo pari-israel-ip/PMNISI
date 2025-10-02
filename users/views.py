@@ -1,19 +1,22 @@
-# Archivo: users/views.py
-
-from rest_framework import generics, permissions
-from .models import CustomUser
-from .serializers import UserRegisterSerializer
-from rest_framework.views import APIView
-from rest_framework.response import Response
-from rest_framework import status
-from .serializers import AdminUserListSerializer # Importamos el nuevo serializer
-from django.core.mail import send_mail
-from django.contrib.auth.tokens import PasswordResetTokenGenerator
-from django.utils.encoding import force_bytes
-from django.utils.http import urlsafe_base64_encode
+# users/views.py
 from django.conf import settings
-from .serializers import SetNewPasswordSerializer # Añade este import
+from django.contrib.auth.models import Group
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
+from django.core.mail import send_mail
+from django.utils.encoding import force_bytes, force_str
+from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 
+from rest_framework import generics, permissions, status
+from rest_framework.response import Response
+from rest_framework.views import APIView
+
+from .models import CustomUser
+from .serializers import (
+    AdminUserListSerializer,
+    SetNewPasswordSerializer,
+    UserApprovalSerializer,
+    UserRegisterSerializer,
+)
 # Esta vista permite que cualquier persona (permission_classes) pueda enviar una
 # solicitud POST para crear un nuevo usuario.
 class UserRegisterView(generics.CreateAPIView):
@@ -30,53 +33,86 @@ class PendingUsersListView(generics.ListAPIView):
     def get_queryset(self):
         # Filtramos para devolver solo los usuarios con estado 'PENDIENTE'
         return CustomUser.objects.filter(estado_aprobacion='PENDIENTE')
-
-
-# class ApproveUserView(APIView):
-#     permission_classes = [permissions.IsAdminUser]
-
-#     def post(self, request, pk):
-#         try:
-#             user = CustomUser.objects.get(pk=pk, estado_aprobacion='PENDIENTE')
-#         except CustomUser.DoesNotExist:
-#             return Response({'error': 'Usuario no encontrado o ya fue procesado'}, status=status.HTTP_404_NOT_FOUND)
-
-#         # Cambiamos el estado y activamos la cuenta
-#         user.estado_aprobacion = 'APROBADO'
-#         user.is_active = True
-#         user.save()
-        
-#         # --- LÓGICA PARA ENVIAR EL EMAIL DE ACTIVACIÓN ---
-#         # 1. Generar un token seguro y un ID de usuario codificado
-#         token_generator = PasswordResetTokenGenerator()
-#         token = token_generator.make_token(user)
-#         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-
-#         # 2. Construir la URL de activación (apuntará a tu frontend en el futuro)
-#         activation_link = f"http://localhost:3000/activate/{uidb64}/{token}" # Usamos 3000 para el futuro frontend de React
-
-#         # 3. Preparar y enviar el correo
-#         subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
-#         message = f"""
-#         ¡Hola {user.first_name}!
-
-#         Tu cuenta para el sistema ha sido aprobada.
-#         Por favor, haz clic en el siguiente enlace para configurar tu contraseña final:
-#         {activation_link}
-
-#         Si no solicitaste esta cuenta, por favor ignora este correo.
-#         """
-#         send_mail(
-#             subject,
-#             message,
-#             settings.DEFAULT_FROM_EMAIL, # Email del remitente
-#             [user.email], # Email del destinatario
-#             fail_silently=False,
-#         )
-
-#         return Response({'status': f'Usuario {user.email} aprobado y correo de activación enviado.'}, status=status.HTTP_200_OK)
     
 class ApproveUserView(APIView):
+    permission_classes = [permissions.IsAdminUser]
+
+    # --- TODO LO QUE SIGUE ESTÁ INDENTADO (DENTRO DE LA CLASE) ---
+    def post(self, request, pk):
+        # Valida que se haya enviado un rol_id
+        approval_serializer = UserApprovalSerializer(data=request.data)
+        if not approval_serializer.is_valid():
+            return Response(approval_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user = CustomUser.objects.get(pk=pk, estado_aprobacion='PENDIENTE')
+            rol_id = approval_serializer.validated_data['rol_id']
+            rol_a_asignar = Group.objects.get(id=rol_id)
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Usuario no encontrado o ya fue procesado'}, status=status.HTTP_404_NOT_FOUND)
+        except Group.DoesNotExist:
+            return Response({'error': 'El rol especificado no existe'}, status=status.HTTP_404_NOT_FOUND)
+        
+        # Asigna el rol y aprueba al usuario
+        user.estado_aprobacion = 'APROBADO'
+        user.rol = rol_a_asignar
+        user.save()
+        
+        # Generar un token seguro y un ID de usuario codificado
+        token_generator = PasswordResetTokenGenerator()
+        token = token_generator.make_token(user)
+        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+
+        # Construir la URL de activación
+        activation_link = f"http://localhost:3000/activate/{uidb64}/{token}"
+
+        # Preparar y enviar el correo
+        subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
+        message = f"""¡Hola {user.first_name}!
+
+Tu cuenta para el sistema ha sido aprobada.
+Por favor, haz clic en el siguiente enlace para configurar tu contraseña final:
+{activation_link}
+
+Si no solicitaste esta cuenta, por favor ignora este correo.
+"""
+        send_mail(
+            subject,
+            message,
+            settings.DEFAULT_FROM_EMAIL,
+            [user.email],
+            fail_silently=False,
+        )
+
+        return Response({'status': f'Usuario {user.email} aprobado con el rol de {rol_a_asignar.name}.'}, status=status.HTTP_200_OK)
+
+
+# --- VERSIÓN FINAL Y AUTORITARIA DE LA VISTA ---
+# --- LA VERSIÓN FINAL CON EL MARTILLO ---
+class SetNewPasswordView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = SetNewPasswordSerializer
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        data = serializer.validated_data
+        
+        try:
+            user_id = force_str(urlsafe_base64_decode(data['uidb64']))
+            user = CustomUser.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist):
+            return Response({'error': 'Enlace de activación inválido.'}, status=status.HTTP_400_BAD_REQUEST)
+        
+        if not PasswordResetTokenGenerator().check_token(user, data['token']):
+            return Response({'error': 'Token inválido o expirado.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+        user.set_password(data['password'])
+        user.is_active = True
+        user.save()
+        
+        return Response({'status': 'Cuenta activada exitosamente.'}, status=status.HTTP_200_OK)
+    
+class RejectUserView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
     def post(self, request, pk):
@@ -84,36 +120,8 @@ class ApproveUserView(APIView):
             user = CustomUser.objects.get(pk=pk, estado_aprobacion='PENDIENTE')
         except CustomUser.DoesNotExist:
             return Response({'error': 'Usuario no encontrado o ya fue procesado'}, status=status.HTTP_404_NOT_FOUND)
-
-        # --- AQUÍ ESTÁ LA LÓGICA CORRECTA Y COMPLETA ---
-        user.estado_aprobacion = 'APROBADO'
-        user.is_active = True  # <-- LA LÍNEA CLAVE QUE SOLUCIONA EL "RUIDO"
-        user.save()
         
-        # ... (el resto del código que genera y envía el email se queda igual) ...
-        # 1. Generar un token seguro y un ID de usuario codificado
-        token_generator = PasswordResetTokenGenerator()
-        token = token_generator.make_token(user)
-        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
-
-        # 2. Construir la URL de activación
-        # EN EL FUTURO, CAMBIARÁS 'localhost:3000' POR EL DOMINIO REAL DE TU FRONTEND
-        activation_link = f"http://localhost:3000/activate/{uidb64}/{token}"
-
-        # 3. Preparar y enviar el correo
-        subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
-        message = f"¡Hola {user.first_name}! Tu cuenta para el sistema ha sido aprobada..." # (El mensaje completo)
-        send_mail(
-            subject, message, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False,
-        )
-
-        return Response({'status': f'Usuario {user.email} aprobado y correo de activación enviado.'}, status=status.HTTP_200_OK)
-    
-class SetNewPasswordView(generics.GenericAPIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = SetNewPasswordSerializer
-
-    def post(self, request):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        return Response({'status': 'Contraseña configurada exitosamente. Ahora puedes iniciar sesión.'}, status=status.HTTP_200_OK)
+        # Eliminación física, como acordamos
+        user.delete()
+        
+        return Response({'status': 'Usuario rechazado y eliminado exitosamente.'}, status=status.HTTP_200_OK)
