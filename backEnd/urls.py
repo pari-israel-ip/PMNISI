@@ -14,16 +14,26 @@ Including another URLconf
     1. Import the include() function: from django.urls import include, path
     2. Add a URL to urlpatterns:  path('blog/', include('blog.urls'))
 """
+# from django.contrib import admin
+# from django.urls import path
+# from django.urls import path, include # Asegúrate de tener 'include'
+# from rest_framework_simplejwt.views import (TokenObtainPairView,TokenRefreshView,) # Importa las vistas de token
+
+# urlpatterns = [
+#     path('admin/', admin.site.urls),
+#     path('api/', include('users.urls')),
+#      # Endpoints para obtener y refrescar tokens JWT
+#     path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
+#     path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
+
+# ]
+
+ # Archivo: backEnd/urls.py
 from django.contrib import admin
-from django.urls import path
-from django.urls import path, include # Asegúrate de tener 'include'
-from rest_framework_simplejwt.views import (TokenObtainPairView,TokenRefreshView,) # Importa las vistas de token
+from django.urls import path, include
 
 urlpatterns = [
     path('admin/', admin.site.urls),
+    # CUALQUIER COSA que empiece con 'api/' será manejada por el archivo de URLs de la app 'users'
     path('api/', include('users.urls')),
-     # Endpoints para obtener y refrescar tokens JWT
-    path('api/token/', TokenObtainPairView.as_view(), name='token_obtain_pair'),
-    path('api/token/refresh/', TokenRefreshView.as_view(), name='token_refresh'),
-
 ]

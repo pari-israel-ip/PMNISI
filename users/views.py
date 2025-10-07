@@ -64,7 +64,7 @@ class ApproveUserView(APIView):
         uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
 
         # Construir la URL de activación
-        activation_link = f"http://localhost:3000/activate/{uidb64}/{token}"
+        activation_link = f"http://localhost:5173/activate/{uidb64}/{token}"
 
         # Preparar y enviar el correo
         subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'

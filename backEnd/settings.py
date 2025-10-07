@@ -10,6 +10,7 @@ For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
 from decouple import config
+from datetime import timedelta
 
 from pathlib import Path
 import os # Asegúrate de tener este import arriba del todo
@@ -17,7 +18,19 @@ import os # Asegúrate de tener este import arriba del todo
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
 
+SIMPLE_JWT = {
+    # Tiempo de vida del token de acceso (el que se usa para cada petición)
+    # Lo pondremos corto por seguridad: 15 minutos.
+    "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
+    
+    # Tiempo de vida del token de refresco (el que se usa para obtener un nuevo token de acceso)
+    # Lo pondremos más largo: 1 día.
+    "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
 
+    # Opcional: Permite rotar los tokens de refresco por seguridad
+    "ROTATE_REFRESH_TOKENS": True,
+    "BLACKLIST_AFTER_ROTATION": True,
+}
 # Quick-start development settings - unsuitable for production
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
@@ -52,6 +65,7 @@ REST_FRAMEWORK = {
 MIDDLEWARE = [
     'django.middleware.security.SecurityMiddleware',
     'django.contrib.sessions.middleware.SessionMiddleware',
+    'corsheaders.middleware.CorsMiddleware', # <-- AÑÁDELO AQUÍ
     'django.middleware.common.CommonMiddleware',
     'django.middleware.csrf.CsrfViewMiddleware',
     'django.contrib.auth.middleware.AuthenticationMiddleware',
@@ -138,13 +152,18 @@ STATIC_URL = 'static/'
 DEFAULT_AUTO_FIELD = 'django.db.models.BigAutoField'
 
  # --- Configuración de Email (Modo Producción con Gmail - Leído desde .env) ---
+ # --- Configuración de Email (Modo Producción con .env) ---
 EMAIL_BACKEND = 'django.core.mail.backends.smtp.EmailBackend'
 EMAIL_HOST = 'smtp.gmail.com'
 EMAIL_PORT = 587
 EMAIL_USE_TLS = True
-
-    # Leemos las credenciales de forma segura desde el archivo .env
+    
+    # Leemos las credenciales desde el archivo .env de la raíz del proyecto
 EMAIL_HOST_USER = config('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
-
+    
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
+ # Al final de backEnd/settings.py
+CORS_ALLOWED_ORIGINS = [
+        "http://localhost:5173", # La dirección de tu frontend de React
+]
