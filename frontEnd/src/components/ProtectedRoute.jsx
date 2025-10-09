@@ -1,18 +1,14 @@
-// Archivo: src/components/ProtectedRoute.jsx
+// 
+// Archivo: src/components/ProtectedRoute.jsx (Versión Simplificada)
 
-import { Navigate } from 'react-router-dom';
+import { Outlet, Navigate } from 'react-router-dom';
 
-function ProtectedRoute({ children }) {
-  // 1. Buscamos el "pase de acceso" en el almacenamiento del navegador.
+function ProtectedRoute() {
   const token = localStorage.getItem('accessToken');
 
-  // 2. Si NO hay pase, lo redirigimos a la puerta principal (login).
-  if (!token) {
-    return <Navigate to="/" />;
-  }
-
-  // 3. Si SÍ hay pase, le permitimos ver el contenido protegido (los children).
-  return children;
+  // Si hay token, Outlet renderizará el componente hijo de la ruta.
+  // Si no hay token, lo redirigimos a la página de login.
+  return token ? <Outlet /> : <Navigate to="/" />;
 }
 
 export default ProtectedRoute;

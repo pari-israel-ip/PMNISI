@@ -9,6 +9,7 @@ from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
+from django.db import transaction # <-- ¡IMPORTAMOS LA HERRAMIENTA MÁS PODEROSA!
 
 from .models import CustomUser
 from .serializers import (
@@ -37,56 +38,51 @@ class PendingUsersListView(generics.ListAPIView):
 class ApproveUserView(APIView):
     permission_classes = [permissions.IsAdminUser]
 
-    # --- TODO LO QUE SIGUE ESTÁ INDENTADO (DENTRO DE LA CLASE) ---
     def post(self, request, pk):
-        # Valida que se haya enviado un rol_id
         approval_serializer = UserApprovalSerializer(data=request.data)
         if not approval_serializer.is_valid():
             return Response(approval_serializer.errors, status=status.HTTP_400_BAD_REQUEST)
+        
+        rol_id = approval_serializer.validated_data['rol_id']
 
         try:
-            user = CustomUser.objects.get(pk=pk, estado_aprobacion='PENDIENTE')
-            rol_id = approval_serializer.validated_data['rol_id']
-            rol_a_asignar = Group.objects.get(id=rol_id)
+            # Envolvemos toda la operación en un bloque de "todo o nada"
+            with transaction.atomic():
+                # Buscamos al usuario PENDIENTE dentro de la transacción
+                user = CustomUser.objects.select_for_update().get(pk=pk, estado_aprobacion='PENDIENTE')
+                rol_a_asignar = Group.objects.get(id=rol_id)
+
+                # Cambiamos el estado del usuario
+                user.estado_aprobacion = 'APROBADO'
+                user.rol = rol_a_asignar
+                user.groups.add(rol_a_asignar)
+                
+                # Intentamos enviar el correo
+                token = PasswordResetTokenGenerator().make_token(user)
+                uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+                activation_link = f"http://localhost:5173/activate/{uidb64}/{token}"
+                subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
+                message = f"¡Hola {user.first_name}! Haz clic aquí para activar tu cuenta: {activation_link}"
+                
+                send_mail(
+                    subject, message, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False
+                )
+
+                # ¡SOLO SI EL CORREO SE ENVÍA CON ÉXITO, guardamos los cambios!
+                user.save()
+
         except CustomUser.DoesNotExist:
-            return Response({'error': 'Usuario no encontrado o ya fue procesado'}, status=status.HTTP_404_NOT_FOUND)
+            return Response({'error': 'Usuario no encontrado o ya fue procesado.'}, status=status.HTTP_404_NOT_FOUND)
         except Group.DoesNotExist:
-            return Response({'error': 'El rol especificado no existe'}, status=status.HTTP_404_NOT_FOUND)
-        
-        # Asigna el rol y aprueba al usuario
-        user.estado_aprobacion = 'APROBADO'
-        user.rol = rol_a_asignar
-        user.save()
-        
-        # Generar un token seguro y un ID de usuario codificado
-        token_generator = PasswordResetTokenGenerator()
-        token = token_generator.make_token(user)
-        uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+            return Response({'error': f'El rol con id={rol_id} no existe.'}, status=status.HTTP_404_NOT_FOUND)
+        except Exception as e:
+            # Si CUALQUIER COSA falla (envío de correo, etc.), la transacción se revierte
+            # y devolvemos el error real.
+            return Response({'error': f'La aprobación falló. Error: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
 
-        # Construir la URL de activación
-        activation_link = f"http://localhost:5173/activate/{uidb64}/{token}"
-
-        # Preparar y enviar el correo
-        subject = 'Tu cuenta ha sido aprobada - Configura tu contraseña'
-        message = f"""¡Hola {user.first_name}!
-
-Tu cuenta para el sistema ha sido aprobada.
-Por favor, haz clic en el siguiente enlace para configurar tu contraseña final:
-{activation_link}
-
-Si no solicitaste esta cuenta, por favor ignora este correo.
-"""
-        send_mail(
-            subject,
-            message,
-            settings.DEFAULT_FROM_EMAIL,
-            [user.email],
-            fail_silently=False,
-        )
-
-        return Response({'status': f'Usuario {user.email} aprobado con el rol de {rol_a_asignar.name}.'}, status=status.HTTP_200_OK)
-
-
+        # Si llegamos aquí, todo el bloque de la transacción tuvo éxito.
+        return Response({'status': f'Usuario {user.email} aprobado y correo enviado.'}, status=status.HTTP_200_OK)
+    
 # --- VERSIÓN FINAL Y AUTORITARIA DE LA VISTA ---
 # --- LA VERSIÓN FINAL CON EL MARTILLO ---
 class SetNewPasswordView(generics.GenericAPIView):

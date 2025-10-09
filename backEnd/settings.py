@@ -56,6 +56,8 @@ INSTALLED_APPS = [
     'corsheaders',
     'users',
     'rest_framework_simplejwt',
+    'gestor_datos.apps.GestorDatosConfig', 
+
 ]
 REST_FRAMEWORK = {
     'DEFAULT_AUTHENTICATION_CLASSES': [
