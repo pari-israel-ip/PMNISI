@@ -1,6 +1,19 @@
-# Archivo: users/permissions.py
+# Archivo: users/permissions.py (VERSIÓN FINAL Y SIN IMPORTACIONES CIRCULARES)
 
 from rest_framework import permissions
+
+class IsComandante(permissions.BasePermission):
+    """
+    Permiso personalizado para permitir el acceso solo a usuarios
+    que pertenezcan al grupo 'Comandante'.
+    """
+    def has_permission(self, request, view):
+        if not request.user or not request.user.is_authenticated:
+            return False
+        
+        # 'request.user.groups' es una forma de ver todos los grupos de un usuario.
+        return request.user.groups.filter(name='Comandante').exists()
+
 
 class PuedeCargarDatos(permissions.BasePermission):
     """
@@ -11,18 +24,6 @@ class PuedeCargarDatos(permissions.BasePermission):
         if not request.user or not request.user.is_authenticated:
             return False
         
+        # Comprueba si el usuario pertenece a CUALQUIERA de estos grupos
         roles_permitidos = ['Subordinado', 'Secretaria', 'Comandante']
-        
-        # --- EL MICRÓFONO DE DEPURACIÓN ---
-        print("---------- CHEQUEO DE PERMISO 'PuedeCargarDatos' ----------")
-        print(f"Usuario que intenta acceder: {request.user.email}")
-        print(f"Grupos a los que pertenece el usuario (según Django): {list(request.user.groups.all())}")
-        print(f"Roles permitidos: {roles_permitidos}")
-        # --- FIN DEL MICRÓFONO ---
-
-        permission_granted = request.user.groups.filter(name__in=roles_permitidos).exists()
-        
-        print(f"¿Permiso concedido?: {permission_granted}")
-        print("---------------------------------------------------------")
-
-        return permission_granted
+        return request.user.groups.filter(name__in=roles_permitidos).exists()

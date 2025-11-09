@@ -1,14 +1,18 @@
-// 
-// Archivo: src/components/ProtectedRoute.jsx (Versión Simplificada)
+//Archivo: src/components/ProtectedRoute.jsx (VERSIÓN FINAL Y CORRECTA)
 
-import { Outlet, Navigate } from 'react-router-dom';
+import { Navigate } from 'react-router-dom';
 
-function ProtectedRoute() {
+function ProtectedRoute({ children }) {
   const token = localStorage.getItem('accessToken');
 
-  // Si hay token, Outlet renderizará el componente hijo de la ruta.
-  // Si no hay token, lo redirigimos a la página de login.
-  return token ? <Outlet /> : <Navigate to="/" />;
+  if (!token) {
+    return <Navigate to="/" replace />; // 'replace' es una buena práctica
+  }
+
+  return children;
 }
 
 export default ProtectedRoute;
+
+//Archivo: src/components/ProtectedRoute.jsx (Versión Simplificada)
+

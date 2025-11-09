@@ -9,11 +9,24 @@ https://docs.djangoproject.com/en/5.2/topics/settings/
 For the full list of settings and their values, see
 https://docs.djangoproject.com/en/5.2/ref/settings/
 """
-from decouple import config
 from datetime import timedelta
 
 from pathlib import Path
 import os # Asegúrate de tener este import arriba del todo
+
+# --- 1. Importamos las herramientas correctas ---
+from decouple import Config, RepositoryEnv
+
+# 2. Construimos la ruta al archivo .env que está en la raíz del proyecto
+# BASE_DIR apunta a PMNISI/backEnd/
+# BASE_DIR.parent apunta a la carpeta de arriba, es decir, PMNISI/
+# Y ahí buscamos el archivo '.env'
+ENV_FILE_PATH = Path(__file__).resolve().parent.parent / '.env'
+
+# 3. Creamos una instancia de Config que LEA explícitamente desde ese archivo
+config = Config(RepositoryEnv(ENV_FILE_PATH))
+
+
 
 # Build paths inside the project like this: BASE_DIR / 'subdir'.
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -35,7 +48,8 @@ SIMPLE_JWT = {
 # See https://docs.djangoproject.com/en/5.2/howto/deployment/checklist/
 
 # SECURITY WARNING: keep the secret key used in production secret!
-SECRET_KEY = 'django-insecure-^m7ydoc%uoh(-b(dz0(z63!x--a%0r^f)rasrzq&nllz$&h^73'
+#SECRET_KEY = 'django-insecure-^m7ydoc%uoh(-b(dz0(z63!x--a%0r^f)rasrzq&nllz$&h^73'
+SECRET_KEY = config('SECRET_KEY')
 
 # SECURITY WARNING: don't run with debug turned on in production!
 DEBUG = True
@@ -163,9 +177,10 @@ EMAIL_USE_TLS = True
     # Leemos las credenciales desde el archivo .env de la raíz del proyecto
 EMAIL_HOST_USER = config('EMAIL_HOST_USER')
 EMAIL_HOST_PASSWORD = config('EMAIL_HOST_PASSWORD')
-    
+
 DEFAULT_FROM_EMAIL = EMAIL_HOST_USER
  # Al final de backEnd/settings.py
 CORS_ALLOWED_ORIGINS = [
         "http://localhost:5173", # La dirección de tu frontend de React
 ]
+

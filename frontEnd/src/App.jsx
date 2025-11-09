@@ -1,34 +1,47 @@
+// Archivo: src/App.jsx (VERSIÓN FINAL CON TODAS LAS RUTAS)
+
 import { Routes, Route } from 'react-router-dom';
+
 import LoginPage from './pages/LoginPage';
-import DashboardPage from './pages/DashboardPage';
 import RegisterPage from './pages/RegisterPage';
 import ActivationPage from './pages/ActivationPage';
-import UsersListPage from './pages/UsersListPage';
-import UploadPage from './pages/UploadPage';
-import StatisticsPage from './pages/StatisticsPage';
-import ProtectedRoute from './components/ProtectedRoute'; // Nuestro guardia
+import DashboardPage from './pages/DashboardPage';
+import GestionSolicitudesPage from './pages/GestionSolicitudesPage';
+
+import ProtectedRoute from './components/ProtectedRoute';
+import MainLayout from './components/MainLayout';
+import UploadRealDataPage from './pages/UploadRealDataPage'; // <-- 1. Importar
 
 function App() {
   return (
     <Routes>
-      {/* --- Rutas Públicas --- */}
-      {/* Estas rutas no necesitan protección. */}
+      {/* --- GRUPO DE RUTAS PÚBLICAS --- */}
       <Route path="/" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/activate/:uidb64/:token" element={<ActivationPage />} />
 
-      {/* --- Rutas Protegidas --- */}
-      {/* Usamos el ProtectedRoute como una ruta "padre".
-          Cualquier ruta anidada dentro de ella estará automáticamente protegida. */}
-      <Route element={<ProtectedRoute />}>
+      {/* --- GRUPO DE RUTAS PROTEGIDAS --- */}
+      <Route
+        element={
+          <ProtectedRoute>
+            <MainLayout />
+          </ProtectedRoute>
+        }
+      >
         <Route path="/dashboard" element={<DashboardPage />} />
-        <Route path="/users" element={<UsersListPage />} />
-        <Route path="/upload-data" element={<UploadPage />} />
-        <Route path="/statistics" element={<StatisticsPage />} />
+        {/* 2. Añadir la nueva ruta protegida */}
+        <Route path="/upload-real-data" element={<UploadRealDataPage />} />
+        {/* --- ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA! --- */}
+        <Route path="/gestion-usuarios" element={<GestionSolicitudesPage />} />
       </Route>
-      
-      {/* Opcional: Una ruta "catch-all" para páginas no encontradas */}
-      <Route path="*" element={<div>Página no encontrada</div>} />
+
+      {/* --- LA RUTA PARA EL 404 BONITO --- */}
+      <Route path="*" element={
+        <div className="bg-slate-900 min-h-screen flex flex-col items-center justify-center text-white">
+          <h1 className="text-6xl font-bold">404</h1>
+          <p className="text-xl mt-4">Página no encontrada</p>
+        </div>
+      } />
     </Routes>
   );
 }

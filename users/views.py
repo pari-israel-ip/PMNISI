@@ -3,28 +3,60 @@ from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
 from django.core.mail import send_mail
+from django.db import transaction
 from django.utils.encoding import force_bytes, force_str
 from django.utils.http import urlsafe_base64_encode, urlsafe_base64_decode
 
 from rest_framework import generics, permissions, status
 from rest_framework.response import Response
 from rest_framework.views import APIView
-from django.db import transaction # <-- ¡IMPORTAMOS LA HERRAMIENTA MÁS PODEROSA!
+from rest_framework_simplejwt.views import TokenObtainPairView
 
 from .models import CustomUser
+from .permissions import IsComandante, PuedeCargarDatos
 from .serializers import (
-    AdminUserListSerializer,
-    SetNewPasswordSerializer,
-    UserApprovalSerializer,
-    UserRegisterSerializer,
+    AdminUserListSerializer, MyTokenObtainPairSerializer, SetNewPasswordSerializer,
+    UserApprovalSerializer, UserRegisterSerializer
 )
+
 # Esta vista permite que cualquier persona (permission_classes) pueda enviar una
 # solicitud POST para crear un nuevo usuario.
+class IniciarRelevoView(APIView):
+    permission_classes = [IsComandante] # <-- CORREGIDO (sin el prefijo)
+
+    def post(self, request, pk):
+        try:
+            # Buscamos al usuario que será el sucesor
+            sucesor = CustomUser.objects.get(pk=pk)
+            
+            # Verificación de seguridad: solo se puede nominar a un Subordinado activo
+            if not sucesor.rol or sucesor.rol.name != 'Subordinado' or not sucesor.is_active:
+                return Response({'error': 'Solo se puede nominar a un Subordinado activo.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # Cambiamos su estado a 'NOMINADO'
+            sucesor.estado_aprobacion = 'NOMINADO'
+            sucesor.save()
+
+            return Response({'status': f'{sucesor.get_full_name()} ha sido nominado como sucesor.'}, status=status.HTTP_200_OK)
+        
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Usuario no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        
+
 class UserRegisterView(generics.CreateAPIView):
     queryset = CustomUser.objects.all()
     permission_classes = [permissions.AllowAny] # Cualquiera puede registrarse
     serializer_class = UserRegisterSerializer
 
+class AllUsersListView(generics.ListAPIView):
+    # ¡Usamos el permiso correcto! Solo el Comandante puede ver a todos.
+    permission_classes = [IsComandante] # <-- CORREGIDO (sin el prefijo)
+    
+    # Usamos el serializer que ya teníamos para la lista de admin.
+    serializer_class = AdminUserListSerializer
+    
+    # Devolvemos TODOS los usuarios, ordenados por fecha de registro.
+    queryset = CustomUser.objects.all().order_by('-date_joined')
 # Vista para que el Admin liste los usuarios pendientes
 class PendingUsersListView(generics.ListAPIView):
     # Solo los administradores (is_staff=True) pueden acceder a esta vista
@@ -36,7 +68,7 @@ class PendingUsersListView(generics.ListAPIView):
         return CustomUser.objects.filter(estado_aprobacion='PENDIENTE')
     
 class ApproveUserView(APIView):
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsComandante] # <-- CORREGIDO (sin el prefijo)
 
     def post(self, request, pk):
         approval_serializer = UserApprovalSerializer(data=request.data)
@@ -107,9 +139,66 @@ class SetNewPasswordView(generics.GenericAPIView):
         user.save()
         
         return Response({'status': 'Cuenta activada exitosamente.'}, status=status.HTTP_200_OK)
+# --- VISTA PARA ACEPTAR EL RELEVO DE MANDO ---
+class AcceptHandoverView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        new_comandante = request.user
+        
+        if new_comandante.estado_aprobacion != 'NOMINADO':
+            return Response({'error': 'No tienes una nominación pendiente.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        try:
+            with transaction.atomic():
+                # Buscamos al Comandante actual. Usamos .get() para asegurar que solo hay uno.
+                # Si hay más de uno, esto fallará, lo cual es una buena medida de seguridad.
+                current_comandante = CustomUser.objects.select_for_update().get(rol__name='Comandante')
+                
+                # 1. ¡LA DEGRADACIÓN! Le quitamos el rol y lo desactivamos.
+                current_comandante.is_active = False
+                current_comandante.rol = None
+                current_comandante.groups.clear()
+                current_comandante.save()
+
+                # 2. ¡LA PROMOCIÓN! Ascendemos al nuevo Comandante.
+                rol_comandante = Group.objects.get(name='Comandante')
+                new_comandante.rol = rol_comandante
+                new_comandante.groups.clear()
+                new_comandante.groups.add(rol_comandante)
+                new_comandante.estado_aprobacion = 'APROBADO'
+                new_comandante.save()
+
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'No se encontró un Comandante activo para realizar el relevo.'}, status=status.HTTP_404_NOT_FOUND)
+        except CustomUser.MultipleObjectsReturned:
+            return Response({'error': 'Error crítico: Múltiples Comandantes detectados. Contacte al administrador.'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+        except Exception as e:
+            return Response({'error': f'Ocurrió un error inesperado: {str(e)}'}, status=status.HTTP_500_INTERNAL_SERVER_ERROR)
+
+        return Response({'status': 'Relevo de mando completado.'}, status=status.HTTP_200_OK)
+
+
+# --- VISTA PARA RECHAZAR EL RELEVO DE MANDO ---
+class RejectHandoverView(APIView):
+    permission_classes = [permissions.IsAuthenticated]
+
+    def post(self, request):
+        user = request.user
+        if user.estado_aprobacion != 'NOMINADO':
+            return Response({'error': 'No tienes una nominación pendiente.'}, status=status.HTTP_403_FORBIDDEN)
+        
+        # Simplemente revertimos el estado a APROBADO
+        user.estado_aprobacion = 'APROBADO'
+        user.save()
+
+        return Response({'status': 'Nominación rechazada.'}, status=status.HTTP_200_OK)
+# --- ¡LA VISTA PERSONALIZADA DE LOGIN, AHORA EN SU SITIO! ---
+class MyTokenObtainPairView(TokenObtainPairView):
+    serializer_class = MyTokenObtainPairSerializer
     
 class RejectUserView(APIView):
-    permission_classes = [permissions.IsAdminUser]
+    permission_classes = [IsComandante] # <-- CORREGIDO (sin el prefijo)
 
     def post(self, request, pk):
         try:
@@ -121,3 +210,45 @@ class RejectUserView(APIView):
         user.delete()
         
         return Response({'status': 'Usuario rechazado y eliminado exitosamente.'}, status=status.HTTP_200_OK)
+    
+class ToggleUserActiveView(APIView):
+    permission_classes = [IsComandante]
+
+    def post(self, request, pk):
+        try:
+            user_to_toggle = CustomUser.objects.get(pk=pk)
+            
+            # Medida de seguridad: un Comandante no puede desactivarse a sí mismo.
+            if request.user == user_to_toggle:
+                return Response({'error': 'Un Comandante no puede desactivarse a sí mismo.'}, status=status.HTTP_403_FORBIDDEN)
+
+            # El "interruptor": si está activo, lo desactiva, y viceversa.
+            user_to_toggle.is_active = not user_to_toggle.is_active
+            user_to_toggle.save()
+            
+            new_status = "activado" if user_to_toggle.is_active else "desactivado"
+            return Response({'status': f'Usuario {user_to_toggle.email} ha sido {new_status}.'}, status=status.HTTP_200_OK)
+        
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Usuario no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+class ReassignRoleView(APIView):
+    permission_classes = [IsComandante]
+
+    def post(self, request, pk):
+        try:
+            user_to_reassign = CustomUser.objects.get(pk=pk)
+            rol_id = request.data.get('rol_id')
+            new_rol = Group.objects.get(id=rol_id)
+            
+            # Seguridad: No se puede reasignar a Comandante por esta vía
+            if new_rol.name == 'Comandante':
+                return Response({'error': 'El rol de Comandante solo puede ser asignado mediante el protocolo de relevo.'}, status=status.HTTP_403_FORBIDDEN)
+
+            user_to_reassign.rol = new_rol
+            user_to_reassign.groups.set([new_rol]) # .set() reemplaza todos los grupos anteriores
+            user_to_reassign.save()
+            
+            return Response({'status': f'Rol de {user_to_reassign.email} actualizado a {new_rol.name}.'}, status=status.HTTP_200_OK)
+        
+        except (CustomUser.DoesNotExist, Group.DoesNotExist):
+            return Response({'error': 'Usuario o Rol no encontrado.'}, status=status.HTTP_404_NOT_FOUND)

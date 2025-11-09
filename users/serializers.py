@@ -5,6 +5,8 @@ from .models import CustomUser
 from django.utils.text import slugify
 import random
 import string
+from django.contrib.auth.models import Group
+from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -37,12 +39,23 @@ class UserRegisterSerializer(serializers.ModelSerializer):
             is_active=False
         )
         return user
-    
+# --- 1. CREAMOS UN MINI-SERIALIZER PARA LOS GRUPOS ---
+class GroupSerializer(serializers.ModelSerializer):
+    class Meta:
+        model = Group
+        fields = ['id', 'name']
+
+
 class AdminUserListSerializer(serializers.ModelSerializer):
+    # Le decimos explícitamente que use nuestro nuevo GroupSerializer para el campo 'rol'
+    rol = GroupSerializer(read_only=True)
+
     class Meta:
         model = CustomUser
-        # Campos que el admin verá en la lista de pendientes
-        fields = ['id', 'email', 'username', 'first_name', 'last_name', 'estado_aprobacion', 'date_joined']
+        fields = ['id', 'email', 'username', 'first_name', 'last_name', 'estado_aprobacion', 'rol', 'is_active', 'date_joined']
+
+
+
 
 class UserApprovalSerializer(serializers.Serializer):
     rol_id = serializers.IntegerField()
@@ -59,3 +72,13 @@ class SetNewPasswordSerializer(serializers.Serializer):
             raise serializers.ValidationError({"password": "Las contraseñas no coinciden."})
         return attrs
 
+# --- AÑADE ESTAS DOS CLASES AL FINAL DEL ARCHIVO ---
+
+# --- ¡LA PIEZA QUE FALTABA! ---
+class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
+    @classmethod
+    def get_token(cls, user):
+        token = super().get_token(user)
+        token['rol'] = user.rol.name if user.rol else None
+        token['is_nominated'] = (user.estado_aprobacion == 'NOMINADO')
+        return token
