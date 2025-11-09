@@ -1,4 +1,5 @@
 # users/views.py
+from datetime import timedelta
 from django.conf import settings
 from django.contrib.auth.models import Group
 from django.contrib.auth.tokens import PasswordResetTokenGenerator
@@ -19,7 +20,13 @@ from .serializers import (
     UserApprovalSerializer, UserRegisterSerializer
 )
 from .serializers import PasswordResetConfirmSerializer # <-- 1. Importar el nuevo serializer
+from django.core.cache import cache # ¡La herramienta para guardar códigos temporales!
+import random
+from rest_framework_simplejwt.tokens import RefreshToken
 
+# Archivo: users/views.py
+# ... (imports y otras vistas)
+from rest_framework_simplejwt.tokens import AccessToken
 
 # Esta vista permite que cualquier persona (permission_classes) pueda enviar una
 # solicitud POST para crear un nuevo usuario.
@@ -295,3 +302,77 @@ class PasswordResetConfirmView(generics.GenericAPIView):
             {'status': 'Contraseña reseteada exitosamente. Ahora puedes iniciar sesión.'},
             status=status.HTTP_200_OK
         )
+# --- ¡LA NUEVA VISTA DE LOGIN, PARTE 1! ---
+class CustomTokenObtainPairView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        email = request.data.get('email')
+        password = request.data.get('password')
+
+        try:
+            user = CustomUser.objects.get(email=email)
+            if not user.check_password(password) or not user.is_active:
+                raise CustomUser.DoesNotExist
+        except CustomUser.DoesNotExist:
+            return Response({'error': 'Credenciales inválidas.'}, status=status.HTTP_401_UNAUTHORIZED)
+
+        # 1. Generar y guardar el código 2FA
+        two_factor_code = f"{random.randint(10000, 99999)}"
+        # Guardamos el código en la caché de Django por 5 minutos
+        cache.set(f'2fa_code_{user.id}', two_factor_code, timeout=300)
+
+        # 2. Enviar el correo con el código
+        subject = 'Tu Código de Verificación'
+        message = f"Tu código de autenticación de dos factores es: {two_factor_code}"
+        send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
+
+        # 3. Generar un token temporal que solo sirve para el siguiente paso
+        refresh = RefreshToken.for_user(user)
+        # Le añadimos una marca especial y una vida corta
+        refresh['is_pre_auth_token'] = True
+        refresh.set_exp(lifetime=timedelta(minutes=5))
+        
+        return Response({
+            'status': '2FA_required',
+            'temp_token': str(refresh.access_token)
+        }, status=status.HTTP_200_OK)
+    
+# --- ¡LA NUEVA VISTA DE LOGIN, PARTE 2! ---
+class Verify2FAView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request, *args, **kwargs):
+        temp_token = request.data.get('temp_token')
+        code = request.data.get('code')
+
+        try:
+            # Validamos el token temporal
+            decoded_token = AccessToken(temp_token)
+            if not decoded_token.get('is_pre_auth_token'):
+                raise Exception() # No es un token de pre-autenticación
+            
+            user_id = decoded_token['user_id']
+            user = CustomUser.objects.get(id=user_id)
+
+            # Validamos el código
+            cached_code = cache.get(f'2fa_code_{user.id}')
+            if not cached_code or cached_code != code:
+                return Response({'error': 'Código inválido o expirado.'}, status=status.HTTP_400_BAD_REQUEST)
+            
+            # ¡Éxito! Generamos los tokens finales
+            refresh = RefreshToken.for_user(user)
+            # (Opcional) Podemos añadir los datos extra que ya teníamos
+            refresh['rol'] = user.rol.name if user.rol else None
+            refresh['is_nominated'] = (user.estado_aprobacion == 'NOMINADO')
+
+            # Limpiamos el código usado
+            cache.delete(f'2fa_code_{user.id}')
+
+            return Response({
+                'refresh': str(refresh),
+                'access': str(refresh.access_token),
+            }, status=status.HTTP_200_OK)
+
+        except Exception:
+            return Response({'error': 'Token temporal inválido o expirado.'}, status=status.HTTP_401_UNAUTHORIZED)
