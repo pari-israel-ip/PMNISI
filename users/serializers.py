@@ -7,6 +7,14 @@ import random
 import string
 from django.contrib.auth.models import Group
 from rest_framework_simplejwt.serializers import TokenObtainPairSerializer
+# Para 'force_str'
+from django.utils.encoding import force_str
+
+# Para 'urlsafe_base64_decode'
+from django.utils.http import urlsafe_base64_decode
+
+# Para 'PasswordResetTokenGenerator'
+from django.contrib.auth.tokens import PasswordResetTokenGenerator
 
 class UserRegisterSerializer(serializers.ModelSerializer):
     class Meta:
@@ -82,3 +90,27 @@ class MyTokenObtainPairSerializer(TokenObtainPairSerializer):
         token['rol'] = user.rol.name if user.rol else None
         token['is_nominated'] = (user.estado_aprobacion == 'NOMINADO')
         return token
+# --- ¡NUEVO SERIALIZER PARA LA CONFIRMACIÓN DEL RESETEO! ---
+class PasswordResetConfirmSerializer(serializers.Serializer):
+    password = serializers.CharField(min_length=8, write_only=True, required=True)
+    password2 = serializers.CharField(min_length=8, write_only=True, required=True)
+    token = serializers.CharField(write_only=True, required=True)
+    uidb64 = serializers.CharField(write_only=True, required=True)
+
+    def validate(self, attrs):
+        if attrs['password'] != attrs['password2']:
+            raise serializers.ValidationError({"password": "Las contraseñas no coinciden."})
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(attrs['uidb64']))
+            user = CustomUser.objects.get(pk=user_id)
+        except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist):
+            raise serializers.ValidationError('El enlace de reseteo no es válido.')
+
+        if not PasswordResetTokenGenerator().check_token(user, attrs['token']):
+            raise serializers.ValidationError('El enlace de reseteo no es válido o ha expirado.')
+        
+        # Guardamos la nueva contraseña y devolvemos el usuario
+        user.set_password(attrs['password'])
+        user.save()
+        return attrs

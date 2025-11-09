@@ -72,9 +72,18 @@ function LoginPage() {
           </button>
         </form>
         
-        <p className="text-center text-sm text-gray-400">
+        {/* --- CÓDIGO INTEGRADO --- */}
+        <div className="text-sm text-center mt-4">
+          <Link to="/forgot-password" className="font-medium text-blue-400 hover:underline">
+            ¿Olvidaste tu contraseña?
+          </Link>
+        </div>
+        
+        <p className="text-center text-sm text-gray-400 mt-6">
           ¿No tienes una cuenta? <Link to="/register" className="text-blue-400 hover:underline">Solicita tu registro aquí</Link>
         </p>
+        {/* --- FIN DE LA INTEGRACIÓN --- */}
+
       </div>
     </div>
   );

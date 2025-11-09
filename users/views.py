@@ -18,6 +18,8 @@ from .serializers import (
     AdminUserListSerializer, MyTokenObtainPairSerializer, SetNewPasswordSerializer,
     UserApprovalSerializer, UserRegisterSerializer
 )
+from .serializers import PasswordResetConfirmSerializer # <-- 1. Importar el nuevo serializer
+
 
 # Esta vista permite que cualquier persona (permission_classes) pueda enviar una
 # solicitud POST para crear un nuevo usuario.
@@ -252,3 +254,44 @@ class ReassignRoleView(APIView):
         
         except (CustomUser.DoesNotExist, Group.DoesNotExist):
             return Response({'error': 'Usuario o Rol no encontrado.'}, status=status.HTTP_404_NOT_FOUND)
+        
+class PasswordResetRequestView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        email = request.data.get('email')
+        try:
+            user = CustomUser.objects.get(email=email)
+            
+            # Generamos el enlace (misma lógica que la activación)
+            token = PasswordResetTokenGenerator().make_token(user)
+            uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+            reset_link = f"http://localhost:5173/reset-password/{uidb64}/{token}"
+
+            # Enviamos el correo
+            subject = 'Solicitud de Reseteo de Contraseña'
+            message = f"Hola {user.first_name}, haz clic en el siguiente enlace para resetear tu contraseña: {reset_link}"
+            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email])
+
+        except CustomUser.DoesNotExist:
+            # ¡IMPORTANTE! No revelamos si el correo existe o no por seguridad.
+            # Siempre devolvemos un mensaje de éxito genérico.
+            pass
+
+        return Response(
+            {'status': 'Si existe una cuenta con ese correo, se ha enviado un enlace de reseteo.'},
+            status=status.HTTP_200_OK
+        )
+
+# --- VISTA PARA CONFIRMAR Y ESTABLECER LA NUEVA CONTRASEÑA ---
+class PasswordResetConfirmView(generics.GenericAPIView):
+    permission_classes = [permissions.AllowAny]
+    serializer_class = PasswordResetConfirmSerializer
+
+    def post(self, request, *args, **kwargs):
+        serializer = self.get_serializer(data=request.data)
+        serializer.is_valid(raise_exception=True)
+        return Response(
+            {'status': 'Contraseña reseteada exitosamente. Ahora puedes iniciar sesión.'},
+            status=status.HTTP_200_OK
+        )

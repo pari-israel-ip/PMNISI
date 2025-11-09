@@ -11,15 +11,21 @@ import GestionSolicitudesPage from './pages/GestionSolicitudesPage';
 import ProtectedRoute from './components/ProtectedRoute';
 import MainLayout from './components/MainLayout';
 import UploadRealDataPage from './pages/UploadRealDataPage'; // <-- 1. Importar
+import ForgotPasswordPage from './pages/ForgotPasswordPage';
+import ResetPasswordPage from './pages/ResetPasswordPage';
+
+
 
 function App() {
   return (
     <Routes>
-      {/* --- GRUPO DE RUTAS PÚBLICAS --- */}
+      {/* --- RUTAS PÚBLICAS ACTUALIZADAS --- */}
       <Route path="/" element={<LoginPage />} />
       <Route path="/register" element={<RegisterPage />} />
       <Route path="/activate/:uidb64/:token" element={<ActivationPage />} />
-
+      <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+      <Route path="/reset-password/:uidb64/:token" element={<ResetPasswordPage />} />
+      
       {/* --- GRUPO DE RUTAS PROTEGIDAS --- */}
       <Route
         element={

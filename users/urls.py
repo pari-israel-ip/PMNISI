@@ -9,6 +9,7 @@ from .views import (
     MyTokenObtainPairView, RejectUserView, SetNewPasswordView,
     UserRegisterView
 )
+from .views import PasswordResetRequestView, PasswordResetConfirmView # <-- 1. Importar las nuevas vistas
 
 urlpatterns = [
     # Rutas de autenticación
@@ -28,5 +29,9 @@ urlpatterns = [
     path('reject-handover/', RejectHandoverView.as_view(), name='reject-handover'),
     path('admin/toggle-active/<int:pk>/', ToggleUserActiveView.as_view(), name='toggle-user-active'),
     path('admin/reassign-role/<int:pk>/', ReassignRoleView.as_view(), name='reassign-role'),
+
+    # --- ¡NUEVAS RUTAS PARA RECUPERAR CONTRASEÑA! ---
+    path('password-reset/', PasswordResetRequestView.as_view(), name='password-reset-request'),
+    path('password-reset-confirm/', PasswordResetConfirmView.as_view(), name='password-reset-confirm'),
 
 ]
