@@ -13,6 +13,7 @@ import MainLayout from './components/MainLayout';
 import UploadRealDataPage from './pages/UploadRealDataPage'; // <-- 1. Importar
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
+import PredictionPage from './pages/PredictionPage'; // <-- 1. Importar
 
 
 
@@ -25,7 +26,7 @@ function App() {
       <Route path="/activate/:uidb64/:token" element={<ActivationPage />} />
       <Route path="/forgot-password" element={<ForgotPasswordPage />} />
       <Route path="/reset-password/:uidb64/:token" element={<ResetPasswordPage />} />
-      
+
       {/* --- GRUPO DE RUTAS PROTEGIDAS --- */}
       <Route
         element={
@@ -39,6 +40,9 @@ function App() {
         <Route path="/upload-real-data" element={<UploadRealDataPage />} />
         {/* --- ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA! --- */}
         <Route path="/gestion-usuarios" element={<GestionSolicitudesPage />} />
+        
+        <Route path="/predictions" element={<PredictionPage />} />
+
       </Route>
 
       {/* --- LA RUTA PARA EL 404 BONITO --- */}

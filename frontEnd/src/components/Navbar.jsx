@@ -26,6 +26,10 @@ const Navbar = () => {
             <Link to="/gestion-usuarios" className="text-gray-300 hover:bg-slate-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
               Gestionar Solicitudes
             </Link>
+            {/* --- ¡EL NUEVO ENLACE! --- */}
+            <Link to="/predictions" className="text-gray-300 hover:bg-slate-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
+              Análisis Predictivo
+            </Link>
             <Link to="/upload-real-data" className="text-gray-300 hover:bg-slate-700 hover:text-white px-3 py-2 rounded-md text-sm font-medium">
               Cargar Datos
             </Link>
