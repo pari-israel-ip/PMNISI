@@ -32,11 +32,9 @@ config = Config(RepositoryEnv(ENV_FILE_PATH))
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 SIMPLE_JWT = {
-    # Tiempo de vida del token de acceso (el que se usa para cada petición)
     # Lo pondremos corto por seguridad: 15 minutos.
     "ACCESS_TOKEN_LIFETIME": timedelta(minutes=15),
     
-    # Tiempo de vida del token de refresco (el que se usa para obtener un nuevo token de acceso)
     # Lo pondremos más largo: 1 día.
     "REFRESH_TOKEN_LIFETIME": timedelta(days=1),
 
@@ -129,12 +127,17 @@ DATABASES = {
 # Password validation
 # https://docs.djangoproject.com/en/5.2/ref/settings/#auth-password-validators
 
+# backEnd/settings.py
+
 AUTH_PASSWORD_VALIDATORS = [
     {
         'NAME': 'django.contrib.auth.password_validation.UserAttributeSimilarityValidator',
     },
     {
         'NAME': 'django.contrib.auth.password_validation.MinimumLengthValidator',
+        'OPTIONS': {
+            'min_length': 8,
+        }
     },
     {
         'NAME': 'django.contrib.auth.password_validation.CommonPasswordValidator',
@@ -143,7 +146,6 @@ AUTH_PASSWORD_VALIDATORS = [
         'NAME': 'django.contrib.auth.password_validation.NumericPasswordValidator',
     },
 ]
-
 
 # Internationalization
 # https://docs.djangoproject.com/en/5.2/topics/i18n/

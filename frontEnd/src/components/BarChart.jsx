@@ -3,65 +3,44 @@ import { Chart as ChartJS, CategoryScale, LinearScale, BarElement, Title, Toolti
 
 ChartJS.register(CategoryScale, LinearScale, BarElement, Title, Tooltip, Legend);
 
-// Esta versión acepta una prop 'options' para fusionarla con las opciones por defecto.
-// Es la que necesitas para que el gráfico horizontal de zonas funcione.
-function BarChart({ chartData, title, options: customOptions }) {
-
-  // Opciones por defecto para un gráfico de barras VERTICAL
-  const defaultOptions = {
+function BarChart({ chartData, title, direction = "vertical", onClickBar }) {
+  
+  const options = {
     responsive: true,
     maintainAspectRatio: false,
+    indexAxis: direction === "horizontal" ? 'y' : 'x',
+    
+    // --- ESTO ES LO QUE FALTABA ---
+    animation: false, 
+    // ------------------------------
+
+    onClick: (event, elements) => {
+      if (elements.length > 0) {
+        const index = elements[0].index;
+        const labelSeleccionado = chartData.labels[index];
+        if (onClickBar) onClickBar(labelSeleccionado);
+      }
+    },
+
     plugins: {
-      legend: {
-        position: 'top',
-        labels: {
-          color: '#e2e8f0', // Texto de leyenda (e.g., "Real", "Predicción ML")
-        },
-      },
+      legend: { display: false },
       title: {
-        display: true,
-        text: title,
-        color: '#e2e8f0', // Color del título
-        font: {
-          size: 16,
-        },
-      },
-      tooltip: {
-        backgroundColor: '#1e293b',
-        titleColor: '#e2e8f0',
-        bodyColor: '#e2e8f0',
+        display: true, text: title, color: 'white',
+        font: { size: 14, weight: 'bold' },
+        align: 'start', padding: { bottom: 20 }
       },
     },
     scales: {
-      // Eje Y (vertical por defecto)
-      y: {
-        beginAtZero: true,
-        ticks: {
-          color: '#94a3b8', // Color de los números del eje Y
-        },
-        grid: {
-          color: 'rgba(148, 163, 184, 0.2)', // Color de las líneas de la cuadrícula
-        },
-      },
-      // Eje X (vertical por defecto)
-      x: {
-        ticks: {
-          color: '#94a3b8', // Color de las etiquetas del eje X
-        },
-        grid: {
-          color: 'rgba(148, 163, 184, 0.1)',
-        },
-      },
-    },
+      x: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { color: '#374151' } },
+      y: { ticks: { color: '#9CA3AF', font: { size: 10 } }, grid: { color: '#374151' } }
+    }
   };
 
-  // ¡LA MAGIA!
-  // Fusionamos las opciones por defecto con las 'customOptions' que le pasamos.
-  // Para el gráfico de zonas, 'customOptions' contendrá 'indexAxis: "y"' 
-  // y sobrescribirá las escalas.
-  const chartOptions = { ...defaultOptions, ...customOptions };
-
-  return <Bar options={chartOptions} data={chartData} />;
+  return (
+    <div className="h-full w-full">
+      <Bar data={chartData} options={options} />
+    </div>
+  );
 }
 
 export default BarChart;

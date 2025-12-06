@@ -14,6 +14,7 @@ import UploadRealDataPage from './pages/UploadRealDataPage'; // <-- 1. Importar
 import ForgotPasswordPage from './pages/ForgotPasswordPage';
 import ResetPasswordPage from './pages/ResetPasswordPage';
 import PredictionPage from './pages/PredictionPage'; // <-- 1. Importar
+import ProfilePage from './pages/ProfilePage'; 
 
 
 
@@ -36,6 +37,8 @@ function App() {
         }
       >
         <Route path="/dashboard" element={<DashboardPage />} />
+
+        <Route path="/profile" element={<ProfilePage />} />
         {/* 2. Añadir la nueva ruta protegida */}
         <Route path="/upload-real-data" element={<UploadRealDataPage />} />
         {/* --- ¡AQUÍ ESTÁ LA LÍNEA QUE FALTABA! --- */}

@@ -44,10 +44,10 @@ def limpiar_nombres_columnas_df(df_in):
     df_in.columns = cols
     return df_in
 
-def get_cocinado_comparison_data(year, month):
+def get_comparison_data(year, month):
     """
     Función principal que consulta la DB y genera los datos
-    reales vs. los predichos "cocinados".
+    reales vs. los predichos.
     
     ¡CON LÓGICA DE ZONAS Y SEMANAS CORREGIDA!
     """
