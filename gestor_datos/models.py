@@ -2,7 +2,6 @@
 
 from django.db import models
 
-# --- MODELO DE PRUEBA (EL ORIGINAL) ---
 class RegistroDelito(models.Model):
     numero_id = models.CharField(max_length=50, unique=True, primary_key=True)
     codigo_delito = models.IntegerField(null=True, blank=True)
@@ -19,7 +18,6 @@ class RegistroDelito(models.Model):
     def __str__(self):
         return f"{self.numero_id} - {self.tipo_delito}"
 
-# --- MODELO PARA DATOS REALES (EL NUEVO) ---
 class RegistroDelitoReal(models.Model):
     cod_form_01 = models.CharField(max_length=50, primary_key=True)
     cod_n = models.CharField(max_length=50, null=True, blank=True)

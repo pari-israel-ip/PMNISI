@@ -1,185 +1,206 @@
-// Archivo: src/pages/LoginPage.jsx (VERSIÓN 2FA COMPLETA CON DEBUG)
+// Archivo: src/pages/LoginPage.jsx
 
 import { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
 
 function LoginPage() {
-  // --- ESTADOS PARA MANEJAR EL FLUJO DE DOS PASOS ---
-  const [step, setStep] = useState(1); // 1 para login, 2 para 2FA
+  // --- ESTADOS ---
+  const [step, setStep] = useState(1);
   const [tempToken, setTempToken] = useState('');
   const [code, setCode] = useState('');
   
-  // --- Estados del formulario original ---
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
+  const [isLoading, setIsLoading] = useState(false);
+  
   const navigate = useNavigate();
+  const bgImage = "https://www.policia.bo/wp-content/uploads/2025/02/CARCANCHO-FINAL.png";
 
-  // --- PASO 1: Enviar email y contraseña ---
-  const handleLoginSubmit = async (e) => {
-    e.preventDefault();
-    setError('');
-    try {
-      // Apuntamos al endpoint que inicia el 2FA
-      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/auth/token/`, { email, password });
-      
-      // --- ¡EL MICRÓFONO ESPÍA! (AÑADIDO) ---
-      // Esto se ejecutará si el backend responde con éxito (status 200-299)
-      console.log('Respuesta del backend (Paso 1 - ÉXITO):', response.data);
-      // --- FIN DEL MICRÓFONO ---
-      
-      // Si el backend dice que se requiere 2FA...
-      if (response.data.status === '2FA_required') {
-        setTempToken(response.data.temp_token); // Guardamos el token temporal
-        setStep(2); // Pasamos al segundo paso (vista de código)
-      }
-    } catch (err) {
-      setError('Correo o contraseña incorrectos.');
+  // --- VALIDACIONES AUXILIARES ---
+  const isValidEmail = (email) => /\S+@\S+\.\S+/.test(email);
 
-      // --- DEBUG MEJORADO (AÑADIDO) ---
-      // Esto se ejecutará si el backend responde con error (status 4xx, 5xx) o hay un error de red
-      console.error('Error en Paso 1 Login (DETALLE):', err);
-      if (err.response) {
-          // El servidor respondió con un código de estado fuera de 2xx
-          console.error('Datos del error (response.data):', err.response.data);
-          console.error('Status del error (response.status):', err.response.status);
-      } else if (err.request) {
-          // La solicitud se hizo pero no se recibió respuesta (ej. el backend está caído)
-          console.error('No se recibió respuesta (err.request):', err.request);
-      } else {
-          // Algo más pasó al configurar la solicitud
-          console.error('Error al configurar la solicitud (err.message):', err.message);
-      }
-      // --- FIN DEBUG ---
+  // --- MANEJADOR PARA EL CÓDIGO (SOLO NÚMEROS) ---
+  const handleCodeChange = (e) => {
+    const value = e.target.value;
+    // Regex: Solo permite dígitos (0-9). Si intentas meter una letra, la ignora.
+    if (/^\d*$/.test(value)) {
+      setCode(value);
     }
   };
 
-  // --- PASO 2: Enviar el código 2FA ---
+  // --- PASO 1: LOGIN ---
+  const handleLoginSubmit = async (e) => {
+    e.preventDefault();
+    setError('');
+
+    // Validación Manual Paso 1
+    if (!email.trim()) { setError('Ingrese su correo institucional.'); return; }
+    if (!isValidEmail(email)) { setError('Formato de correo inválido.'); return; }
+    if (!password) { setError('Ingrese su contraseña.'); return; }
+
+    setIsLoading(true);
+
+    try {
+      const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/auth/token/`, { email, password });
+      
+      if (response.data.status === '2FA_required') {
+        setTempToken(response.data.temp_token);
+        setStep(2);
+      } else {
+        const { access, refresh } = response.data;
+        localStorage.setItem('accessToken', access);
+        localStorage.setItem('refreshToken', refresh);
+        navigate('/dashboard');
+      }
+    } catch (err) {
+      setError('Credenciales incorrectas. Verifique su correo y contraseña.');
+    } finally {
+      setIsLoading(false);
+    }
+  };
+
+  // --- PASO 2: VERIFICACIÓN 2FA ---
   const handle2FASubmit = async (e) => {
     e.preventDefault();
     setError('');
+
+    // Validación Manual Paso 2 (Aquí eliminamos el mensaje en inglés)
+    if (!code) {
+      setError('Por favor, ingrese el código de verificación.');
+      return;
+    }
+    if (code.length !== 5) {
+      setError('El código debe tener exactamente 5 dígitos.');
+      return;
+    }
+
+    setIsLoading(true);
+
     try {
-      // Apuntamos al endpoint de verificación
       const response = await axios.post(`${import.meta.env.VITE_API_BASE_URL}/api/auth/token/verify-2fa/`, {
         temp_token: tempToken,
         code: code,
       });
-      // (Añadimos un console.log aquí también por si acaso)
-      console.log('Respuesta del backend (Paso 2 - ÉXITO):', response.data);
 
-      // Si el código es correcto, recibimos los tokens finales
       const { access, refresh } = response.data;
       localStorage.setItem('accessToken', access);
       localStorage.setItem('refreshToken', refresh);
-      navigate('/dashboard'); // Enviamos al dashboard
+      navigate('/dashboard');
     } catch (err) {
-      setError('Código inválido o expirado. Inténtalo de nuevo.');
-      
-      // --- DEBUG MEJORADO (AÑADIDO) ---
-      console.error('Error en Paso 2 2FA (DETALLE):', err);
-      if (err.response) {
-        console.error('Datos del error (response.data):', err.response.data);
-        console.error('Status del error (response.status):', err.response.status);
-      } else if (err.request) {
-        console.error('No se recibió respuesta (err.request):', err.request);
-      } else {
-        console.error('Error al configurar la solicitud (err.message):', err.message);
-      }
-      // --- FIN DEBUG ---
+      setError('Código de verificación incorrecto o expirado.');
+    } finally {
+      setIsLoading(false);
     }
   };
 
+  // --- ESTILOS ---
+  const inputClasses = "w-full px-4 py-3 mt-1 text-white bg-gray-900/80 border border-gray-600 rounded-lg focus:outline-none focus:ring-2 focus:ring-[#556B2F] focus:border-transparent placeholder-gray-500 transition-all";
+  const buttonClasses = "w-full py-3 px-4 bg-[#556B2F] hover:bg-[#4b5320] text-white font-bold rounded-lg shadow-lg transform transition hover:scale-[1.02] active:scale-95 disabled:opacity-50 disabled:cursor-not-allowed";
+
   return (
-    <div className="bg-slate-900 min-h-screen flex flex-col items-center justify-center text-white">
-      <div className="w-full max-w-md p-8 space-y-6 bg-slate-800 rounded-lg shadow-md">
-        {error && <p className="text-red-500 text-center">{error}</p>}
+    <div 
+      className="min-h-screen flex flex-col items-center justify-center relative bg-black"
+      style={{
+        backgroundImage: `linear-gradient(rgba(10, 20, 10, 0.9), rgba(5, 15, 5, 0.95)), url('${bgImage}')`,
+        backgroundSize: 'cover',
+        backgroundPosition: 'center',
+        backgroundRepeat: 'no-repeat'
+      }}
+    >
+      <div className="w-full max-w-md p-8 space-y-8 bg-gray-900/60 backdrop-blur-sm rounded-2xl shadow-2xl border border-gray-700">
         
-        {/* --- RENDERIZADO CONDICIONAL --- */}
-        
-        {step === 1 ? (
-          // --- FORMULARIO PASO 1: Email y Contraseña ---
-          <>
-            <h1 className="text-2xl font-bold text-center">Iniciar Sesión</h1>
-            <form onSubmit={handleLoginSubmit} className="space-y-6">
-              <div>
-                <label htmlFor="email" className="block text-sm font-medium text-gray-300">
-                  Correo Electrónico
-                </label>
-                <input
-                  type="email"
-                  id="email"
-                  className="w-full px-3 py-2 mt-1 text-white bg-slate-700 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="tu@correo.com"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  required
-                />
-              </div>
-              <div>
-                <label htmlFor="password" className="block text-sm font-medium text-gray-300">
-                  Contraseña
-                </label>
-                <input
-                  type="password"
-                  id="password"
-                  className="w-full px-3 py-2 mt-1 text-white bg-slate-700 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  placeholder="••••••••"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  required
-                />
-              </div>
-              <button
-                type="submit"
-                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold text-white transition-colors"
-              >
-                Ingresar
-              </button>
-            </form>
-          </>
-        ) : (
-          // --- FORMULARIO PASO 2: Código 2FA ---
-          <>
-            <h1 className="text-2xl font-bold text-center">Verificación de Dos Factores</h1>
-            <p className="text-sm text-gray-400 text-center">Hemos enviado un código a tu correo ({email}). Por favor, ingrésalo a continuación.</p>
-            <form onSubmit={handle2FASubmit} className="space-y-6">
-              <div>
-                <label htmlFor="code" className="block text-sm font-medium text-gray-300">
-                  Código de Verificación
-                </label>
-                <input 
-                  type="text" 
-                  id="code" 
-                  value={code} 
-                  onChange={(e) => setCode(e.target.value)} 
-                  className="w-full px-3 py-2 mt-1 text-white bg-slate-700 border border-slate-600 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500" 
-                  placeholder="12345"
-                  required 
-                />
-              </div>
-              <button 
-                type="submit" 
-                className="w-full py-2 px-4 bg-blue-600 hover:bg-blue-700 rounded-md font-semibold text-white transition-colors"
-              >
-                Verificar
-              </button>
-            </form>
-          </>
+        <div className="text-center">
+          <img src={bgImage} alt="Escudo Policía" className="w-20 h-auto mx-auto mb-4 drop-shadow-lg" />
+          <h2 className="text-3xl font-extrabold text-white tracking-tight">
+            Sistema de Análisis Predictivo
+          </h2>
+          <p className="mt-2 text-sm text-gray-400">
+            {step === 1 ? 'Ingrese sus credenciales institucionales' : 'Verificación de seguridad requerida'}
+          </p>
+        </div>
+
+        {error && (
+          <div className="p-3 bg-red-900/50 border border-red-700 rounded text-red-200 text-sm text-center animate-pulse">
+            {error}
+          </div>
         )}
 
-        {/* --- Enlaces inferiores (se muestran en ambos pasos) --- */}
-        <div className="text-sm text-center mt-4">
-          <Link to="/forgot-password" className="font-medium text-blue-400 hover:underline">
-            ¿Olvidaste tu contraseña?
-          </Link>
+        {step === 1 ? (
+          // AÑADIDO noValidate para evitar mensajes en inglés
+          <form onSubmit={handleLoginSubmit} className="space-y-6" noValidate>
+            <div>
+              <label htmlFor="email" className="block text-sm font-medium text-gray-300">Correo Institucional</label>
+              <input
+                type="email"
+                id="email"
+                className={inputClasses}
+                placeholder="nombre.apellido@policia.bo"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+              />
+            </div>
+            <div>
+              <label htmlFor="password" className="block text-sm font-medium text-gray-300">Contraseña</label>
+              <input
+                type="password"
+                id="password"
+                className={inputClasses}
+                placeholder="••••••••"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+              />
+            </div>
+            <button type="submit" className={buttonClasses} disabled={isLoading}>
+              {isLoading ? 'Verificando...' : 'Ingresar al Sistema'}
+            </button>
+          </form>
+        ) : (
+          // AÑADIDO noValidate y lógica de solo números
+          <form onSubmit={handle2FASubmit} className="space-y-6" noValidate>
+            <div className="text-center">
+              <p className="text-gray-300 text-sm mb-4">
+                Hemos enviado un código de 5 dígitos a: <span className="font-bold text-white">{email}</span>
+              </p>
+              <input 
+                type="text" // Usamos text pero controlamos la entrada
+                inputMode="numeric" // Teclado numérico en móviles
+                pattern="[0-9]*"
+                id="code" 
+                value={code} 
+                onChange={handleCodeChange} // <-- AQUÍ ESTÁ EL FILTRO DE SOLO NÚMEROS
+                className={`${inputClasses} text-center text-2xl tracking-widest font-mono`}
+                placeholder="00000"
+                maxLength={5}
+                autoFocus
+                autoComplete="one-time-code" // Ayuda a autocompletar SMS
+              />
+            </div>
+            <button type="submit" className={buttonClasses} disabled={isLoading}>
+              {isLoading ? 'Validando...' : 'Verificar Código'}
+            </button>
+            <button type="button" onClick={() => setStep(1)} className="w-full text-sm text-gray-400 hover:text-white transition-colors mt-2">
+              ← Volver al inicio
+            </button>
+          </form>
+        )}
+
+        <div className="mt-6 border-t border-gray-700 pt-4">
+          <div className="flex justify-between text-sm">
+            <Link to="/forgot-password" className="font-medium text-[#8FBC8F] hover:text-[#556B2F] transition-colors">
+              ¿Olvidó su contraseña?
+            </Link>
+            <Link to="/register" className="font-medium text-[#8FBC8F] hover:text-[#556B2F] transition-colors">
+              Solicitar Acceso
+            </Link>
+          </div>
         </div>
         
-        <p className="text-center text-sm text-gray-400 mt-6">
-          ¿No tienes una cuenta? <Link to="/register" className="text-blue-400 hover:underline">Solicita tu registro aquí</Link>
-        </p>
-
       </div>
+      <p className="absolute bottom-4 text-xs text-gray-500">
+        © 2025 Policía Boliviana - División de Tecnología
+      </p>
     </div>
   );
 }

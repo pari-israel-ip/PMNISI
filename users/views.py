@@ -124,6 +124,32 @@ class ApproveUserView(APIView):
         # Si llegamos aquí, todo el bloque de la transacción tuvo éxito.
         return Response({'status': f'Usuario {user.email} aprobado y correo enviado.'}, status=status.HTTP_200_OK)
     
+# Archivo: users/views.py (AÑADE ESTO AL FINAL)
+
+# ... (tus otras vistas)
+
+# --- ¡LA VISTA QUE FALTABA! ---
+class UserProfileView(APIView):
+    permission_classes = [permissions.IsAuthenticated] # Solo usuarios logueados
+
+    def get(self, request):
+        # Reutilizamos el serializer que ya tenemos para mostrar los datos
+        serializer = AdminUserListSerializer(request.user)
+        return Response(serializer.data)
+
+    def patch(self, request):
+        user = request.user
+        data = request.data
+        
+        # Actualizamos solo nombre y apellido, forzando mayúsculas
+        if 'first_name' in data:
+            user.first_name = data['first_name'].upper()
+        if 'last_name' in data:
+            user.last_name = data['last_name'].upper()
+            
+        user.save()
+        
+        return Response({'status': 'Perfil actualizado correctamente.'}, status=status.HTTP_200_OK)
 # --- VERSIÓN FINAL Y AUTORITARIA DE LA VISTA ---
 # --- LA VERSIÓN FINAL CON EL MARTILLO ---
 class SetNewPasswordView(generics.GenericAPIView):
@@ -291,18 +317,72 @@ class PasswordResetRequestView(APIView):
         )
 
 # --- VISTA PARA CONFIRMAR Y ESTABLECER LA NUEVA CONTRASEÑA ---
-class PasswordResetConfirmView(generics.GenericAPIView):
-    permission_classes = [permissions.AllowAny]
-    serializer_class = PasswordResetConfirmSerializer
+# Archivo: users/views.py (AÑADIR AL FINAL)
 
-    def post(self, request, *args, **kwargs):
-        serializer = self.get_serializer(data=request.data)
-        serializer.is_valid(raise_exception=True)
-        return Response(
-            {'status': 'Contraseña reseteada exitosamente. Ahora puedes iniciar sesión.'},
-            status=status.HTTP_200_OK
-        )
+# --- VISTA 1: SOLICITAR RESETEO (Envía el correo) ---
+class PasswordResetRequestView(APIView):
+    permission_classes = [permissions.AllowAny] # Cualquiera puede pedirlo
+
+    def post(self, request):
+        email = request.data.get('email')
+        try:
+            user = CustomUser.objects.get(email=email)
+            
+            # Generamos el token y el link (igual que en la activación)
+            token_generator = PasswordResetTokenGenerator()
+            token = token_generator.make_token(user)
+            uidb64 = urlsafe_base64_encode(force_bytes(user.pk))
+            
+            # Este link apunta a la página de React que acabamos de crear
+            reset_link = f"http://localhost:5173/reset-password/{uidb64}/{token}"
+            
+            subject = 'Recuperación de Contraseña - Sistema Policial'
+            message = f"Hola {user.first_name},\n\nHas solicitado restablecer tu contraseña. Haz clic en el siguiente enlace:\n{reset_link}\n\nSi no fuiste tú, ignora este correo."
+            
+            send_mail(subject, message, settings.DEFAULT_FROM_EMAIL, [user.email], fail_silently=False)
+            
+        except CustomUser.DoesNotExist:
+            # Por seguridad, NO decimos si el correo existe o no.
+            pass 
+            
+        return Response({'status': 'Si el correo existe, se ha enviado un enlace.'}, status=status.HTTP_200_OK)
+
+
+# --- VISTA 2: CONFIRMAR RESETEO (Cambia la contraseña) ---
+class PasswordResetConfirmView(APIView):
+    permission_classes = [permissions.AllowAny]
+
+    def post(self, request):
+        uidb64 = request.data.get('uidb64')
+        token = request.data.get('token')
+        password = request.data.get('password')
+        password2 = request.data.get('password2')
+
+        if password != password2:
+            return Response({'error': 'Las contraseñas no coinciden.'}, status=status.HTTP_400_BAD_REQUEST)
+
+        try:
+            user_id = force_str(urlsafe_base64_decode(uidb64))
+            user = CustomUser.objects.get(pk=user_id)
+
+            token_generator = PasswordResetTokenGenerator()
+            if not token_generator.check_token(user, token):
+                return Response({'error': 'El enlace es inválido o ha expirado.'}, status=status.HTTP_400_BAD_REQUEST)
+
+            # --- ¡AQUÍ ESTÁ LA REGLA DE NO REPETIR! ---
+            if user.check_password(password):
+                return Response({'error': 'No puedes usar la misma contraseña anterior. Por favor, elige una nueva.'}, status=status.HTTP_400_BAD_REQUEST)
+            # -------------------------------------------
+
+            user.set_password(password)
+            user.save()
+
+            return Response({'status': 'Contraseña restablecida con éxito.'}, status=status.HTTP_200_OK)
+
+        except (TypeError, ValueError, OverflowError, CustomUser.DoesNotExist):
+            return Response({'error': 'Enlace inválido.'}, status=status.HTTP_400_BAD_REQUEST)
 # --- ¡LA NUEVA VISTA DE LOGIN, PARTE 1! ---
+
 class CustomTokenObtainPairView(APIView):
     permission_classes = [permissions.AllowAny]
 
